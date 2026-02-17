@@ -47,32 +47,9 @@ function checkIfInMeeting() {
   return false;
 }
 
-// Copiar enlace de la reunión
+// Copiar enlace de la reunión (URL limpia sin parámetros)
 function copyMeetLink() {
-  // Buscar por aria-label
-  let copyBtn = null;
-  const buttons = document.querySelectorAll('button');
-  
-  for (const btn of buttons) {
-    const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-    const text = btn.textContent.toLowerCase().trim();
-    
-    if (label.includes('copiar enlace') || label.includes('copy link') ||
-        text.includes('copiar enlace') || text === 'copy link') {
-      copyBtn = btn;
-      break;
-    }
-  }
-  
-  if (copyBtn) {
-    console.log('[MeetExt] Clickeando botón copiar enlace');
-    copyBtn.click();
-    return true;
-  }
-  
-  // Fallback: copiar URL usando input temporal
-  console.log('[MeetExt] Botón no encontrado, copiando URL con fallback');
-  const url = window.location.href;
+  const url = window.location.origin + window.location.pathname;
   
   const input = document.createElement('input');
   input.value = url;
