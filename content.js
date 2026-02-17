@@ -66,8 +66,16 @@ function copyMeetLink() {
 function applySettings(options) {
   console.log('[MeetExt] Aplicando settings:', options);
   
-  const buttons = document.querySelectorAll('button[aria-label], button[data-tooltip]');
+  // Buscar TODOS los botones
+  const buttons = document.querySelectorAll('button');
   console.log('[MeetExt] Botones encontrados:', buttons.length);
+  
+  for (const btn of buttons) {
+    const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || btn.textContent || '').toLowerCase();
+    if (label.length > 0 && label.length < 50) {
+      console.log('[MeetExt] Botón:', label.substring(0, 40));
+    }
+  }
   
   // Apagar cámara
   if (options.camOff) {
@@ -113,20 +121,21 @@ function setupAutoAdmit() {
   if (window.__meetAutoAdmit) return;
   
   const checkAdmitButtons = () => {
-    // Primero buscar badges/indicadores de gente esperando
-    const allElements = document.querySelectorAll('button, div[role="button"], [data-participant-id]');
+    // Buscar elementos que necesiten hover (badges, indicadores)
+    const allElements = document.querySelectorAll('button, div, span, [role="button"]');
     
     for (const el of allElements) {
       const text = (el.textContent || '').toLowerCase();
       const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
       
-      // Buscar badge de "alguien quiere unirse" o similar
+      // Hacer hover en elementos de espera
       if (ariaLabel.includes('waiting') || ariaLabel.includes('esperando') ||
           ariaLabel.includes('wants to join') || ariaLabel.includes('quiere unirse') ||
           ariaLabel.includes('asking to join') || ariaLabel.includes('pide unirse') ||
-          text.includes('wants to join') || text.includes('quiere unirse')) {
-        console.log('[MeetExt] Encontrado badge de espera, clickeando:', ariaLabel || text.substring(0, 30));
-        el.click();
+          text.includes('esperando') || text.includes('waiting')) {
+        console.log('[MeetExt] Hover en:', ariaLabel || text.substring(0, 30));
+        el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
       }
     }
     
