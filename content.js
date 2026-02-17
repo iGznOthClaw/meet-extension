@@ -113,6 +113,24 @@ function setupAutoAdmit() {
   if (window.__meetAutoAdmit) return;
   
   const checkAdmitButtons = () => {
+    // Primero buscar badges/indicadores de gente esperando
+    const allElements = document.querySelectorAll('button, div[role="button"], [data-participant-id]');
+    
+    for (const el of allElements) {
+      const text = (el.textContent || '').toLowerCase();
+      const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+      
+      // Buscar badge de "alguien quiere unirse" o similar
+      if (ariaLabel.includes('waiting') || ariaLabel.includes('esperando') ||
+          ariaLabel.includes('wants to join') || ariaLabel.includes('quiere unirse') ||
+          ariaLabel.includes('asking to join') || ariaLabel.includes('pide unirse') ||
+          text.includes('wants to join') || text.includes('quiere unirse')) {
+        console.log('[MeetExt] Encontrado badge de espera, clickeando:', ariaLabel || text.substring(0, 30));
+        el.click();
+      }
+    }
+    
+    // Buscar botones de admitir
     const buttons = document.querySelectorAll('button');
     for (const btn of buttons) {
       const text = btn.textContent.toLowerCase().trim();
@@ -120,7 +138,7 @@ function setupAutoAdmit() {
       
       if (text === 'admitir' || text === 'admit' || 
           text === 'admitir a todos' || text === 'admit all' ||
-          ariaLabel.includes('admit')) {
+          text.includes('admit') || ariaLabel.includes('admit')) {
         console.log('[MeetExt] Auto-admitiendo:', text || ariaLabel);
         btn.click();
       }
