@@ -14,8 +14,11 @@ document.getElementById('createBtn').addEventListener('click', async () => {
       active: true 
     });
     
-    // Esperar a que cargue y ejecutar la automatización
+    status.textContent = '⏳ Esperando que cargue...';
+    
+    // Esperar a que cargue
     await waitForTabLoad(tab.id);
+    await sleep(2000); // Extra wait para JS
     
     status.textContent = '⏳ Creando reunión...';
     
@@ -25,9 +28,11 @@ document.getElementById('createBtn').addEventListener('click', async () => {
       func: automateCreateMeeting
     });
     
+    console.log('Script results:', results);
+    
     const meetLink = results[0]?.result;
     
-    if (meetLink && meetLink.includes('meet.google.com')) {
+    if (meetLink && meetLink.includes('meet.google.com/') && !meetLink.includes('ERROR')) {
       // Copiar al portapapeles
       await navigator.clipboard.writeText(meetLink);
       
@@ -36,10 +41,11 @@ document.getElementById('createBtn').addEventListener('click', async () => {
       linkDiv.textContent = meetLink;
       linkDiv.style.display = 'block';
     } else {
-      throw new Error('No se pudo obtener el enlace');
+      throw new Error(meetLink || 'No se pudo obtener el enlace');
     }
     
   } catch (error) {
+    console.error('Extension error:', error);
     status.className = 'error';
     status.textContent = '❌ Error: ' + error.message;
   } finally {
@@ -47,14 +53,25 @@ document.getElementById('createBtn').addEventListener('click', async () => {
   }
 });
 
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 function waitForTabLoad(tabId) {
   return new Promise((resolve) => {
-    chrome.tabs.onUpdated.addListener(function listener(id, info) {
+    const listener = (id, info) => {
       if (id === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
-        setTimeout(resolve, 1500); // Esperar un poco más para que cargue JS
+        resolve();
       }
-    });
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    
+    // Timeout por si acaso
+    setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, 15000);
   });
 }
 
@@ -62,107 +79,123 @@ function waitForTabLoad(tabId) {
 async function automateCreateMeeting() {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   
-  // Función para encontrar botón por texto
-  function findButtonByText(text) {
-    const buttons = document.querySelectorAll('button, [role="button"]');
-    for (const btn of buttons) {
-      if (btn.textContent.toLowerCase().includes(text.toLowerCase())) {
-        return btn;
-      }
-    }
-    return null;
-  }
-  
-  // Función para esperar elemento
-  async function waitForElement(selector, timeout = 10000) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      const el = document.querySelector(selector);
-      if (el) return el;
-      await sleep(200);
-    }
-    return null;
-  }
-  
-  // Función para esperar botón por texto
-  async function waitForButtonByText(text, timeout = 10000) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      const btn = findButtonByText(text);
-      if (btn) return btn;
-      await sleep(200);
-    }
-    return null;
-  }
+  const log = (msg) => console.log('[MeetExt]', msg);
   
   try {
-    // 1. Esperar y click en "Nueva reunión"
-    await sleep(2000);
+    log('Iniciando automatización...');
     
-    let newMeetingBtn = await waitForButtonByText('Nueva reunión') || 
-                        await waitForButtonByText('New meeting') ||
-                        await waitForButtonByText('nueva');
+    // Esperar a que cargue el contenido
+    await sleep(1500);
     
+    // Buscar el botón "Nueva reunión" / "New meeting"
+    log('Buscando botón Nueva reunión...');
+    
+    let newMeetingBtn = null;
+    
+    // Método 1: Buscar por texto en botones
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const text = btn.textContent.toLowerCase();
+      if (text.includes('nueva reuni') || text.includes('new meeting')) {
+        newMeetingBtn = btn;
+        log('Encontrado por texto: ' + btn.textContent);
+        break;
+      }
+    }
+    
+    // Método 2: Buscar por aria-label
     if (!newMeetingBtn) {
-      // Intentar con selector específico
-      newMeetingBtn = document.querySelector('[data-button-id="new-meeting"]') ||
-                      document.querySelector('[jsname="CuSyi"]');
+      newMeetingBtn = document.querySelector('[aria-label*="Nueva"]') ||
+                      document.querySelector('[aria-label*="New meeting"]');
+      if (newMeetingBtn) log('Encontrado por aria-label');
+    }
+    
+    // Método 3: Buscar divs clickeables con el texto
+    if (!newMeetingBtn) {
+      const allDivs = document.querySelectorAll('div[role="button"], div[jsaction]');
+      for (const div of allDivs) {
+        const text = div.textContent.toLowerCase();
+        if (text.includes('nueva reuni') || text.includes('new meeting')) {
+          newMeetingBtn = div;
+          log('Encontrado div por texto: ' + div.textContent.substring(0, 50));
+          break;
+        }
+      }
     }
     
     if (!newMeetingBtn) {
-      throw new Error('No se encontró botón "Nueva reunión"');
+      // Debug: mostrar todos los botones encontrados
+      const btnTexts = Array.from(allButtons).map(b => b.textContent.substring(0, 30));
+      log('Botones encontrados: ' + JSON.stringify(btnTexts));
+      return 'ERROR: No se encontró botón "Nueva reunión". Botones: ' + btnTexts.join(', ');
     }
     
+    // Click en Nueva reunión
+    log('Haciendo click en Nueva reunión...');
     newMeetingBtn.click();
-    await sleep(1000);
+    await sleep(1500);
     
-    // 2. Click en "Iniciar una reunión instantánea" o "Iniciar una reunión"
-    let startBtn = await waitForButtonByText('Iniciar una reunión') ||
-                   await waitForButtonByText('Start an instant meeting') ||
-                   await waitForButtonByText('instantánea') ||
-                   await waitForButtonByText('instant meeting');
+    // Buscar "Iniciar una reunión instantánea" en el menú
+    log('Buscando opción Iniciar reunión...');
     
+    let startBtn = null;
+    
+    // Buscar en menú desplegable
+    const menuItems = document.querySelectorAll('[role="menuitem"], [role="option"], li[data-value], ul li');
+    log('Items de menú encontrados: ' + menuItems.length);
+    
+    for (const item of menuItems) {
+      const text = item.textContent.toLowerCase();
+      log('Menu item: ' + text.substring(0, 40));
+      if (text.includes('iniciar una reuni') || text.includes('start an instant') || 
+          text.includes('instantánea') || text.includes('instant meeting')) {
+        startBtn = item;
+        log('Encontrada opción: ' + item.textContent.substring(0, 40));
+        break;
+      }
+    }
+    
+    // También buscar en cualquier elemento clickeable
     if (!startBtn) {
-      // Buscar en el menú desplegable
-      const menuItems = document.querySelectorAll('[role="menuitem"], [role="option"], li');
-      for (const item of menuItems) {
-        if (item.textContent.toLowerCase().includes('iniciar') || 
-            item.textContent.toLowerCase().includes('start')) {
-          startBtn = item;
+      const allClickables = document.querySelectorAll('[jsaction*="click"], [data-mdc-dialog-action]');
+      for (const el of allClickables) {
+        const text = el.textContent.toLowerCase();
+        if (text.includes('iniciar') || text.includes('start')) {
+          startBtn = el;
+          log('Encontrado clickeable: ' + el.textContent.substring(0, 40));
           break;
         }
       }
     }
     
     if (!startBtn) {
-      throw new Error('No se encontró botón "Iniciar reunión"');
+      return 'ERROR: No se encontró opción "Iniciar reunión" en el menú';
     }
     
+    // Click en iniciar
+    log('Haciendo click en Iniciar...');
     startBtn.click();
-    
-    // 3. Esperar a que cargue la reunión y obtener URL
     await sleep(3000);
     
-    // Esperar a que la URL cambie a una reunión
-    const maxWait = 15000;
+    // Esperar a que la URL cambie al formato de reunión
+    log('Esperando URL de reunión...');
+    
+    const maxWait = 20000;
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWait) {
       const currentUrl = window.location.href;
+      log('URL actual: ' + currentUrl);
+      
+      // Formato: meet.google.com/xxx-xxxx-xxx
       if (currentUrl.match(/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/)) {
+        log('¡URL de reunión encontrada!');
         return currentUrl;
       }
       await sleep(500);
     }
     
-    // Si no cambió la URL, intentar obtenerla del DOM
-    const meetingInfo = document.querySelector('[data-meeting-code]');
-    if (meetingInfo) {
-      const code = meetingInfo.getAttribute('data-meeting-code');
-      return `https://meet.google.com/${code}`;
-    }
-    
-    throw new Error('No se pudo obtener el enlace de la reunión');
+    return 'ERROR: Timeout esperando URL de reunión. URL final: ' + window.location.href;
     
   } catch (error) {
     return 'ERROR: ' + error.message;
