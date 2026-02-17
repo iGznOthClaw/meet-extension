@@ -12,14 +12,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'copyLink') {
-    navigator.clipboard.writeText(message.link).then(() => {
-      console.log('[MeetExt] Link copiado:', message.link);
-      sendResponse({ ok: true });
-    }).catch(err => {
-      console.error('[MeetExt] Error copiando:', err);
-      sendResponse({ error: err.message });
-    });
-    return true; // async response
+    copyMeetLink();
+    sendResponse({ ok: true });
   }
   
   if (message.action === 'getUrl') {
@@ -33,19 +27,18 @@ function checkIfInMeeting() {
   if (url.match(/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/)) {
     console.log('[MeetExt] Estamos en una reunión!');
     
-    // Obtener opciones guardadas y aplicar
     chrome.storage.local.get(['camOff', 'micOff', 'autoAdmit', 'pendingApply'], (data) => {
       if (data.pendingApply) {
         console.log('[MeetExt] Aplicando configuraciones pendientes...');
         chrome.storage.local.remove('pendingApply');
         
-        setTimeout(() => {
-          applySettings({
-            camOff: data.camOff !== false,
-            micOff: data.micOff !== false,
-            autoAdmit: data.autoAdmit !== false
-          });
-        }, 2000);
+        applySettings({
+          camOff: data.camOff !== false,
+          micOff: data.micOff !== false,
+          autoAdmit: data.autoAdmit !== false
+        });
+        
+        copyMeetLink();
       }
     });
     
@@ -54,15 +47,30 @@ function checkIfInMeeting() {
   return false;
 }
 
+// Copiar enlace de la reunión
+function copyMeetLink() {
+  const buttons = document.querySelectorAll('button[aria-label], button[data-tooltip]');
+  
+  for (const btn of buttons) {
+    const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || '').toLowerCase();
+    
+    if (label.includes('copiar enlace') || label.includes('copy link') || label === 'copiar enlace') {
+      console.log('[MeetExt] Clickeando botón copiar enlace');
+      btn.click();
+      return true;
+    }
+  }
+  
+  // Fallback: copiar URL directamente
+  console.log('[MeetExt] Botón no encontrado, copiando URL directamente');
+  navigator.clipboard.writeText(window.location.href);
+  return true;
+}
+
 // Aplicar configuraciones
-async function applySettings(options) {
+function applySettings(options) {
   console.log('[MeetExt] Aplicando settings:', options);
   
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-  
-  await sleep(2000);
-  
-  // Buscar todos los botones
   const buttons = document.querySelectorAll('button[aria-label], button[data-tooltip]');
   console.log('[MeetExt] Botones encontrados:', buttons.length);
   
@@ -77,12 +85,10 @@ async function applySettings(options) {
     for (const btn of buttons) {
       const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || '').toLowerCase();
       
-      // Si el label indica que la cámara está encendida (y se puede apagar)
-      if ((label.includes('camera') || label.includes('cámara') || label.includes('video')) &&
-          (label.includes('turn off') || label.includes('desactivar') || label.includes('apagar'))) {
+      if ((label.includes('cámara') || label.includes('camera') || label.includes('video')) &&
+          (label.includes('desactivar') || label.includes('turn off') || label.includes('apagar'))) {
         console.log('[MeetExt] Apagando cámara:', label);
         btn.click();
-        await sleep(500);
         break;
       }
     }
@@ -94,11 +100,10 @@ async function applySettings(options) {
     for (const btn of buttons) {
       const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || '').toLowerCase();
       
-      if ((label.includes('microphone') || label.includes('micrófono') || label.includes('mic')) &&
-          (label.includes('turn off') || label.includes('desactivar') || label.includes('apagar') || label.includes('silenciar'))) {
+      if ((label.includes('micrófono') || label.includes('microphone') || label.includes('mic')) &&
+          (label.includes('desactivar') || label.includes('turn off') || label.includes('apagar') || label.includes('silenciar') || label.includes('mute'))) {
         console.log('[MeetExt] Apagando micrófono:', label);
         btn.click();
-        await sleep(500);
         break;
       }
     }
@@ -117,7 +122,7 @@ async function applySettings(options) {
 function setupAutoAdmit() {
   if (window.__meetAutoAdmit) return;
   
-  const observer = new MutationObserver(() => {
+  const checkAdmitButtons = () => {
     const buttons = document.querySelectorAll('button');
     for (const btn of buttons) {
       const text = btn.textContent.toLowerCase().trim();
@@ -130,17 +135,21 @@ function setupAutoAdmit() {
         btn.click();
       }
     }
-  });
+  };
   
+  // Revisar inmediatamente
+  checkAdmitButtons();
+  
+  // Observer para cambios
+  const observer = new MutationObserver(checkAdmitButtons);
   observer.observe(document.body, { childList: true, subtree: true });
   window.__meetAutoAdmit = observer;
+  
   console.log('[MeetExt] Auto-admitir activado');
 }
 
 // Verificar al cargar
-setTimeout(() => {
-  checkIfInMeeting();
-}, 1000);
+checkIfInMeeting();
 
 // Observar cambios de URL (SPA)
 let lastUrl = window.location.href;
@@ -148,6 +157,6 @@ new MutationObserver(() => {
   if (window.location.href !== lastUrl) {
     lastUrl = window.location.href;
     console.log('[MeetExt] URL cambió a:', lastUrl);
-    setTimeout(checkIfInMeeting, 1000);
+    checkIfInMeeting();
   }
 }).observe(document.body, { childList: true, subtree: true });
