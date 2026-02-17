@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 280px;
+      padding: 15px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    h2 {
+      margin: 0 0 15px 0;
+      font-size: 16px;
+      color: #8ab4f8;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #createBtn {
+      background: #8ab4f8;
+      color: #1a1a1a;
+    }
+    #createBtn:hover {
+      background: #aecbfa;
+    }
+    #createBtn:disabled {
+      background: #555;
+      color: #888;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    #status.success {
+      display: block;
+      background: #1e3a2f;
+      color: #81c995;
+    }
+    #status.error {
+      display: block;
+      background: #3a1e1e;
+      color: #f28b82;
+    }
+    #status.working {
+      display: block;
+      background: #3a3a1e;
+      color: #fdd663;
+    }
+    #link {
+      margin-top: 10px;
+      padding: 8px;
+      background: #2d2d2d;
+      border-radius: 4px;
+      font-size: 11px;
+      word-break: break-all;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>🎥 Meet Link Generator</h2>
+  <button id="createBtn">Crear Reunión</button>
+  <div id="status"></div>
+  <div id="link"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
