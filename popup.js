@@ -1,7 +1,36 @@
+// Cargar opciones guardadas
+document.addEventListener('DOMContentLoaded', async () => {
+  const stored = await chrome.storage.local.get(['camOff', 'micOff', 'autoAdmit']);
+  
+  document.getElementById('camOff').checked = stored.camOff !== false;
+  document.getElementById('micOff').checked = stored.micOff !== false;
+  document.getElementById('autoAdmit').checked = stored.autoAdmit !== false;
+});
+
+// Guardar opciones cuando cambian
+document.querySelectorAll('.options input').forEach(input => {
+  input.addEventListener('change', () => {
+    chrome.storage.local.set({
+      camOff: document.getElementById('camOff').checked,
+      micOff: document.getElementById('micOff').checked,
+      autoAdmit: document.getElementById('autoAdmit').checked
+    });
+  });
+});
+
 document.getElementById('createBtn').addEventListener('click', async () => {
   const btn = document.getElementById('createBtn');
   const status = document.getElementById('status');
   const linkDiv = document.getElementById('link');
+  
+  const options = {
+    camOff: document.getElementById('camOff').checked,
+    micOff: document.getElementById('micOff').checked,
+    autoAdmit: document.getElementById('autoAdmit').checked
+  };
+  
+  // Guardar opciones
+  await chrome.storage.local.set(options);
   
   btn.disabled = true;
   status.className = 'working';
@@ -9,13 +38,14 @@ document.getElementById('createBtn').addEventListener('click', async () => {
   status.style.display = 'block';
   
   try {
-    // Enviar mensaje al background script
-    const response = await chrome.runtime.sendMessage({ action: 'createMeeting' });
+    const response = await chrome.runtime.sendMessage({ 
+      action: 'createMeeting',
+      options: options
+    });
     
     console.log('Response:', response);
     
     if (response && response.link) {
-      // Copiar al portapapeles
       await navigator.clipboard.writeText(response.link);
       
       status.className = 'success';
@@ -25,10 +55,6 @@ document.getElementById('createBtn').addEventListener('click', async () => {
     } else if (response && response.error) {
       status.className = 'error';
       status.textContent = '❌ ' + response.error;
-      if (response.buttons) {
-        linkDiv.textContent = 'Botones encontrados: ' + response.buttons.join(', ');
-        linkDiv.style.display = 'block';
-      }
     } else {
       status.className = 'error';
       status.textContent = '❌ Sin respuesta';

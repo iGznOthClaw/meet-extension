@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <style>
     body {
-      width: 280px;
+      width: 300px;
       padding: 15px;
       font-family: 'Segoe UI', Arial, sans-serif;
       background: #1a1a1a;
@@ -14,6 +14,28 @@
       margin: 0 0 15px 0;
       font-size: 16px;
       color: #8ab4f8;
+    }
+    .options {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #2d2d2d;
+      border-radius: 8px;
+    }
+    .option {
+      display: flex;
+      align-items: center;
+      margin: 8px 0;
+      cursor: pointer;
+    }
+    .option input {
+      margin-right: 10px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .option label {
+      cursor: pointer;
+      font-size: 13px;
     }
     button {
       width: 100%;
@@ -72,6 +94,22 @@
 </head>
 <body>
   <h2>🎥 Meet Link Generator</h2>
+  
+  <div class="options">
+    <div class="option">
+      <input type="checkbox" id="camOff" checked>
+      <label for="camOff">📷 Apagar cámara</label>
+    </div>
+    <div class="option">
+      <input type="checkbox" id="micOff" checked>
+      <label for="micOff">🎤 Apagar micrófono</label>
+    </div>
+    <div class="option">
+      <input type="checkbox" id="autoAdmit" checked>
+      <label for="autoAdmit">✅ Auto-admitir participantes</label>
+    </div>
+  </div>
+  
   <button id="createBtn">Crear Reunión</button>
   <div id="status"></div>
   <div id="link"></div>

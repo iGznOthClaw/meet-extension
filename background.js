@@ -2,14 +2,14 @@
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'createMeeting') {
-    createMeeting().then(sendResponse);
+    createMeeting(message.options || {}).then(sendResponse);
     return true;
   }
 });
 
-async function createMeeting() {
+async function createMeeting(options) {
   try {
-    console.log('[BG] Creando reunión...');
+    console.log('[BG] Creando reunión con opciones:', options);
     
     // 1. Abrir Meet
     const tab = await chrome.tabs.create({ 
@@ -17,33 +17,34 @@ async function createMeeting() {
       active: true 
     });
     
-    console.log('[BG] Tab creada:', tab.id);
-    
     // 2. Esperar a que cargue
     await waitForTabComplete(tab.id);
     await sleep(3000);
     
-    console.log('[BG] Página cargada, ejecutando script...');
-    
-    // 3. Ejecutar automatización
+    // 3. Ejecutar automatización para crear reunión
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: automateInPage
+      func: createMeetingInPage
     });
-    
-    console.log('[BG] Resultado:', results);
     
     const result = results[0]?.result;
     
-    // 4. Si hay link, copiarlo al portapapeles desde la página
     if (result && result.link) {
+      // 4. Esperar a que cargue la página de la reunión
+      await waitForTabComplete(tab.id);
+      await sleep(3000);
+      
+      // 5. Aplicar configuraciones (cámara, mic, auto-admit)
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: (link) => {
-          navigator.clipboard.writeText(link).then(() => {
-            console.log('[MeetExt] Link copiado:', link);
-          });
-        },
+        func: applyMeetingSettings,
+        args: [options]
+      });
+      
+      // 6. Copiar link
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (link) => navigator.clipboard.writeText(link),
         args: [result.link]
       });
     }
@@ -64,7 +65,7 @@ function waitForTabComplete(tabId) {
   return new Promise((resolve) => {
     const check = () => {
       chrome.tabs.get(tabId, (tab) => {
-        if (tab.status === 'complete') {
+        if (tab && tab.status === 'complete') {
           resolve();
         } else {
           setTimeout(check, 200);
@@ -76,23 +77,19 @@ function waitForTabComplete(tabId) {
   });
 }
 
-// Función que corre en la página
-function automateInPage() {
+// Crear la reunión
+function createMeetingInPage() {
   return new Promise(async (resolve) => {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
-    
-    const log = (msg) => {
-      console.log('[MeetExt]', msg);
-    };
+    const log = msg => console.log('[MeetExt]', msg);
     
     try {
-      log('=== INICIANDO AUTOMATIZACIÓN ===');
-      
+      log('=== CREANDO REUNIÓN ===');
       await sleep(2000);
       
       // Buscar botón Nueva reunión
-      const allElements = document.querySelectorAll('*');
       let targetElement = null;
+      const allElements = document.querySelectorAll('*');
       
       for (const el of allElements) {
         if (el.children.length === 0 || el.tagName === 'BUTTON' || el.tagName === 'SPAN') {
@@ -126,7 +123,7 @@ function automateInPage() {
       targetElement.click();
       await sleep(1500);
       
-      // Buscar opción Iniciar reunión instantánea
+      // Buscar opción Iniciar reunión
       const menuItems = document.querySelectorAll('li, [role="menuitem"], [role="option"], [data-value]');
       let startOption = null;
       
@@ -139,10 +136,6 @@ function automateInPage() {
       }
       
       if (!startOption) {
-        if (window.location.href.match(/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/)) {
-          resolve({ link: window.location.href });
-          return;
-        }
         resolve({ error: 'No se encontró opción Iniciar reunión' });
         return;
       }
@@ -157,14 +150,6 @@ function automateInPage() {
         const url = window.location.href;
         if (url.match(/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/)) {
           log('Reunión creada: ' + url);
-          
-          // Apagar cámara y micrófono
-          await sleep(2000);
-          await toggleCameraAndMic();
-          
-          // Configurar auto-admitir
-          await setupAutoAdmit();
-          
           resolve({ link: url });
           return;
         }
@@ -174,92 +159,100 @@ function automateInPage() {
       resolve({ error: 'Timeout esperando reunión' });
       
     } catch (err) {
-      log('Error: ' + err.message);
       resolve({ error: err.message });
     }
   });
 }
 
-// Función para apagar cámara y micrófono (se inyecta en automateInPage)
-async function toggleCameraAndMic() {
+// Aplicar configuraciones de la reunión
+function applyMeetingSettings(options) {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const log = msg => console.log('[MeetExt]', msg);
   
-  log('Apagando cámara y micrófono...');
+  log('=== APLICANDO CONFIGURACIONES ===');
+  log('Opciones: ' + JSON.stringify(options));
   
-  // Buscar botones de cámara y mic por aria-label o data attributes
-  const buttons = document.querySelectorAll('button[aria-label], button[data-tooltip]');
-  
-  for (const btn of buttons) {
-    const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || '').toLowerCase();
+  // Función para encontrar y hacer click en botones de control
+  async function toggleControl(type, shouldBeOff) {
+    if (!shouldBeOff) return;
     
-    // Cámara
-    if (label.includes('camera') || label.includes('cámara') || label.includes('video')) {
-      if (label.includes('turn off') || label.includes('desactivar') || label.includes('apagar') ||
-          !label.includes('turn on') && !label.includes('activar')) {
-        log('Apagando cámara: ' + label);
-        btn.click();
-        await sleep(500);
+    await sleep(1000);
+    
+    const buttons = document.querySelectorAll('button');
+    
+    for (const btn of buttons) {
+      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+      const dataTooltip = (btn.getAttribute('data-tooltip') || '').toLowerCase();
+      const label = ariaLabel || dataTooltip;
+      
+      let isTarget = false;
+      let isCurrentlyOn = false;
+      
+      if (type === 'camera') {
+        isTarget = label.includes('camera') || label.includes('cámara') || 
+                   label.includes('video') || label.includes('cam');
+        // Si dice "turn off" o "desactivar", está encendida
+        isCurrentlyOn = label.includes('turn off') || label.includes('desactivar') || 
+                        label.includes('apagar') || label.includes('off');
+      } else if (type === 'mic') {
+        isTarget = label.includes('microphone') || label.includes('micrófono') || 
+                   label.includes('micro') || label.includes('mic');
+        isCurrentlyOn = label.includes('turn off') || label.includes('desactivar') || 
+                        label.includes('apagar') || label.includes('off') || label.includes('mute');
+      }
+      
+      if (isTarget) {
+        log(`Encontrado ${type}: "${label}" - actualmente ${isCurrentlyOn ? 'ON' : 'OFF'}`);
+        if (isCurrentlyOn) {
+          log(`Apagando ${type}...`);
+          btn.click();
+          await sleep(500);
+          return true;
+        }
       }
     }
     
-    // Micrófono
-    if (label.includes('microphone') || label.includes('micrófono') || label.includes('mic')) {
-      if (label.includes('turn off') || label.includes('desactivar') || label.includes('apagar') ||
-          !label.includes('turn on') && !label.includes('activar')) {
-        log('Apagando micrófono: ' + label);
-        btn.click();
-        await sleep(500);
-      }
-    }
+    log(`No se encontró botón de ${type} para apagar`);
+    return false;
   }
   
-  // Método alternativo: usar atajos de teclado
-  // Ctrl+D = toggle cámara, Ctrl+E = toggle mic
-  try {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, bubbles: true }));
-    await sleep(300);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', ctrlKey: true, bubbles: true }));
-  } catch (e) {
-    log('Atajos no funcionaron: ' + e.message);
-  }
-}
-
-// Función para auto-admitir participantes
-async function setupAutoAdmit() {
-  const log = msg => console.log('[MeetExt]', msg);
-  
-  log('Configurando auto-admitir...');
-  
-  // Observer para detectar cuando alguien quiere entrar
-  const observer = new MutationObserver((mutations) => {
-    // Buscar botón "Admitir" / "Admit"
-    const admitButtons = document.querySelectorAll('button');
-    for (const btn of admitButtons) {
-      const text = btn.textContent.toLowerCase();
-      if (text === 'admitir' || text === 'admit' || text.includes('admit')) {
-        log('Auto-admitiendo participante');
-        btn.click();
-      }
+  // Función principal async
+  (async () => {
+    await sleep(2000);
+    
+    // Apagar cámara si está marcado
+    if (options.camOff) {
+      log('Intentando apagar cámara...');
+      await toggleControl('camera', true);
     }
     
-    // También buscar "Admit all" / "Admitir a todos"
-    for (const btn of admitButtons) {
-      const text = btn.textContent.toLowerCase();
-      if (text.includes('admit all') || text.includes('admitir a todos')) {
-        log('Admitiendo a todos');
-        btn.click();
-      }
+    // Apagar micrófono si está marcado
+    if (options.micOff) {
+      log('Intentando apagar micrófono...');
+      await toggleControl('mic', true);
     }
-  });
-  
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-  
-  log('Auto-admitir activado');
-  
-  // Guardar referencia para que no se elimine
-  window.__meetExtAutoAdmit = observer;
+    
+    // Configurar auto-admitir
+    if (options.autoAdmit) {
+      log('Configurando auto-admitir...');
+      
+      const observer = new MutationObserver(() => {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const text = btn.textContent.toLowerCase().trim();
+          if (text === 'admitir' || text === 'admit' || 
+              text === 'admitir a todos' || text === 'admit all') {
+            log('Auto-admitiendo: ' + text);
+            btn.click();
+          }
+        }
+      });
+      
+      observer.observe(document.body, { childList: true, subtree: true });
+      window.__meetAutoAdmit = observer;
+      log('Auto-admitir activado');
+    }
+    
+    log('=== CONFIGURACIONES APLICADAS ===');
+  })();
 }

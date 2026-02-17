@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Meet Link Generator",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Crea reuniones de Google Meet y copia el enlace automáticamente",
   "permissions": [
     "activeTab",
     "scripting",
     "clipboardWrite",
-    "tabs"
+    "tabs",
+    "storage"
   ],
   "host_permissions": [
     "https://meet.google.com/*"
