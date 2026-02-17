@@ -138,7 +138,8 @@ function setupAutoAdmit() {
       
       if (text === 'admitir' || text === 'admit' || 
           text === 'admitir a todos' || text === 'admit all' ||
-          text.includes('admit') || ariaLabel.includes('admit')) {
+          text.includes('admitir a') || text.includes('admit') || 
+          text.includes('invitado') || ariaLabel.includes('admit')) {
         console.log('[MeetExt] Auto-admitiendo:', text || ariaLabel);
         btn.click();
       }
