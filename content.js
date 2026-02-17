@@ -49,21 +49,39 @@ function checkIfInMeeting() {
 
 // Copiar enlace de la reunión
 function copyMeetLink() {
-  const buttons = document.querySelectorAll('button[aria-label], button[data-tooltip]');
+  // Buscar por aria-label
+  let copyBtn = null;
+  const buttons = document.querySelectorAll('button');
   
   for (const btn of buttons) {
-    const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || '').toLowerCase();
+    const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+    const text = btn.textContent.toLowerCase().trim();
     
-    if (label.includes('copiar enlace') || label.includes('copy link') || label === 'copiar enlace') {
-      console.log('[MeetExt] Clickeando botón copiar enlace');
-      btn.click();
-      return true;
+    if (label.includes('copiar enlace') || label.includes('copy link') ||
+        text.includes('copiar enlace') || text === 'copy link') {
+      copyBtn = btn;
+      break;
     }
   }
   
-  // Fallback: copiar URL directamente
-  console.log('[MeetExt] Botón no encontrado, copiando URL directamente');
-  navigator.clipboard.writeText(window.location.href);
+  if (copyBtn) {
+    console.log('[MeetExt] Clickeando botón copiar enlace');
+    copyBtn.click();
+    return true;
+  }
+  
+  // Fallback: copiar URL usando input temporal
+  console.log('[MeetExt] Botón no encontrado, copiando URL con fallback');
+  const url = window.location.href;
+  
+  const input = document.createElement('input');
+  input.value = url;
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand('copy');
+  document.body.removeChild(input);
+  
+  console.log('[MeetExt] URL copiada:', url);
   return true;
 }
 
@@ -73,11 +91,6 @@ function applySettings(options) {
   
   const buttons = document.querySelectorAll('button[aria-label], button[data-tooltip]');
   console.log('[MeetExt] Botones encontrados:', buttons.length);
-  
-  for (const btn of buttons) {
-    const label = (btn.getAttribute('aria-label') || btn.getAttribute('data-tooltip') || '').toLowerCase();
-    console.log('[MeetExt] Botón:', label);
-  }
   
   // Apagar cámara
   if (options.camOff) {
@@ -137,10 +150,8 @@ function setupAutoAdmit() {
     }
   };
   
-  // Revisar inmediatamente
   checkAdmitButtons();
   
-  // Observer para cambios
   const observer = new MutationObserver(checkAdmitButtons);
   observer.observe(document.body, { childList: true, subtree: true });
   window.__meetAutoAdmit = observer;
